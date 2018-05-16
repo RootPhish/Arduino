@@ -1,12 +1,8 @@
 #include <U8g2lib.h>
 #include <U8x8lib.h>
-#include <ESP8266WebServer.h>
 #include <WiFiManager.h>         
-#include <WiFiClientSecure.h>
-#include <ESP8266WiFi.h>
-#include <ESP8266mDNS.h>
-#include <WiFiUdp.h>
-#include <ArduinoOTA.h>
+#include <WebSocketsClient.h>
+#include <ArduinoJson.h>
 
 const char* host = "api.gdax.com";
 const int httpsPort = 443;
@@ -14,12 +10,61 @@ const char* url = "/products/ETH-USD/ticker";
 const char* fingerprint = "69 39 26 2d de 76 cd 44 01 77 43 9b 0f 59 63 49 a7 cb b6 02";
 
 U8G2_SSD1306_128X32_UNIVISION_1_HW_I2C u8g2(U8G2_R0);
+WebSocketsClient webSocket;
 
-bool busyDownloading = false;
-unsigned long startMillis;
-unsigned long currentMillis;
-const unsigned long pollPeriod = 1000;
-String currentValue = "";
+float currentValue = 0;
+float currentPL = 0;
+
+void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
+  switch(type) {
+    case WStype_DISCONNECTED:
+      Serial.printf("[WSc] Disconnected!\n");
+      break;
+    case WStype_CONNECTED:
+      {
+        Serial.printf("[WSc] Connected to url: %s\n",  payload);
+        // send message to server when Connected
+        webSocket.sendTXT("{\"type\":\"subscribe\",\"channels\":[{\"name\":\"ticker\",\"product_ids\":[\"ETH-USD\"]}]}");
+      }
+      break;
+    case WStype_TEXT:
+      Serial.printf("[WSc] get text: %s\n", payload);
+      parseData((char *)payload);
+      printData();
+      // send message to server
+      // webSocket.sendTXT("message here");
+      break;
+    case WStype_BIN:
+      Serial.printf("[WSc] get binary length: %u\n", length);
+      hexdump(payload, length);
+      // send data to server
+      // webSocket.sendBIN(payload, length);
+      break;
+    }
+}
+
+void parseData(char* json) {
+  const size_t bufferSize = JSON_OBJECT_SIZE(10) + 210;
+  DynamicJsonBuffer jsonBuffer(bufferSize);
+
+  JsonObject& root = jsonBuffer.parseObject(json);
+
+//  const char* type = root["type"]; // "ticker"
+//  long trade_id = root["trade_id"]; // 20153558
+//  long sequence = root["sequence"]; // 3262786978
+//  const char* time = root["time"]; // "2017-09-02T17:05:49.250000Z"
+//  const char* product_id = root["product_id"]; // "BTC-USD"
+  const float price = root["price"]; // "4388.01000000"
+  const float open_24h = root["open_24h"];
+//  const char* side = root["side"]; // "buy"
+//  const char* last_size = root["last_size"]; // "0.03000000"
+//  const char* best_bid = root["best_bid"]; // "4388"
+//  const char* best_ask = root["best_ask"]; // "4388.01"
+  if (price) {
+    currentValue = price;
+    currentPL = (price - open_24h) / open_24h * 100;
+  }
+}
 
 void setup() {
   // Open Serial for debug output
@@ -35,26 +80,8 @@ void setup() {
   // Connect WiFi
   connectWiFi();
 
-  startMillis = millis();
-
-  ArduinoOTA.onStart([]() {
-    Serial.println("Start");
-  });
-  ArduinoOTA.onEnd([]() {
-    Serial.println("\nEnd");
-  });
-  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
-  });
-  ArduinoOTA.onError([](ota_error_t error) {
-    Serial.printf("Error[%u]: ", error);
-    if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
-    else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
-    else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
-    else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
-    else if (error == OTA_END_ERROR) Serial.println("End Failed");
-  });
-  ArduinoOTA.begin();
+  webSocket.beginSSL("ws-feed.gdax.com", 443);
+  webSocket.onEvent(webSocketEvent);
 }
 
 void connectWiFi() {
@@ -85,6 +112,16 @@ void drawStr2Lines(const char *s1, const char *s2) {
 }
 
 void printData() {
+  char buffer1[16];
+  char buffer2[16];
+  int ret;
+  
+  ret = snprintf(buffer1, sizeof buffer1, "$%.2f", currentValue);
+  ret = snprintf(buffer2, sizeof buffer2, "%.2f%%", currentPL);
+
+  drawStr2Lines(buffer1, buffer2);
+  
+/*  
   int width;
   u8g2.firstPage();    
   do {
@@ -92,54 +129,11 @@ void printData() {
     width = u8g2.getStrWidth(currentValue.c_str());
     u8g2.drawStr((128 - width) / 2, 31, currentValue.c_str());
   } while ( u8g2.nextPage() );  
-}
-
-void fetchData() {
-  WiFiClientSecure client;
-  Serial.print("connecting to ");
-  Serial.println(host);
-  if (!client.connect(host, httpsPort)) {
-    Serial.println("connection failed");
-    return;
-  }
-
-  Serial.print("requesting URL: ");
-  Serial.println(url);
-
-  client.print(String("GET ") + url + " HTTP/1.1\r\n" +
-               "Host: " + host + "\r\n" +
-               "User-Agent: BuildFailureDetectorESP8266\r\n" +
-               "Connection: close\r\n\r\n");
-
-  Serial.println("request sent");
-  while (client.connected()) {
-    String line = client.readStringUntil('\n');
-    if (line == "\r") {
-      Serial.println("headers received");
-      break;
-    }
-  }
-  String line;
-  while(client.available()) {
-    char character = client.read();
-    line += character;
-  }
-  Serial.println(line);
-
-  String oldValue = String(currentValue);
-  currentValue = line.substring(30, 36);
-  printData();
+*/
 }
 
 void loop() {
-  ArduinoOTA.handle();
-  currentMillis = millis();
-  if ((currentMillis - startMillis >= pollPeriod) && (busyDownloading == false)) {
-    busyDownloading = true;
-    fetchData();
-    startMillis = currentMillis;
-    busyDownloading = false;
-  }
+  webSocket.loop();
 }
 
 
