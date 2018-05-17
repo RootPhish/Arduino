@@ -28,7 +28,7 @@
 #include "intf/ssd1306_interface.h"
 #include "i2c/ssd1306_i2c.h"
 #include "spi/ssd1306_spi.h"
-#include "hal/io.h"
+#include "ssd1306_hal/io.h"
 
 
 static const uint8_t PROGMEM s_oled128x64_initData[] =
@@ -91,7 +91,7 @@ void    sh1106_128x64_init()
 {
     ssd1306_lcd.type = LCD_TYPE_SH1106;
     ssd1306_lcd.height = 64;
-    ssd1306_lcd.width = 128;
+    ssd1306_lcd.width = 132;
     ssd1306_lcd.set_block = sh1106_setBlock;
     ssd1306_lcd.next_page = sh1106_nextPage;
     ssd1306_lcd.send_pixels1 = ssd1306_intf.send;

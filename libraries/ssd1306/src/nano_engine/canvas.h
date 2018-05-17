@@ -29,13 +29,15 @@
 #ifndef _NANO_CANVAS_H_
 #define _NANO_CANVAS_H_
 
-#include "hal/io.h"
+#include "ssd1306_hal/io.h"
+#include "ssd1306_hal/Print_internal.h"
 #include "nano_gfx_types.h"
 
 enum
 {
-    CANVAS_TEXT_WRAP = 1,
-    CANVAS_MODE_TRANSPARENT = 2,
+    CANVAS_TEXT_WRAP            = 0x01,
+    CANVAS_MODE_TRANSPARENT     = 0x02,
+    CANVAS_TEXT_WRAP_LOCAL      = 0x04,
 };
 
 
@@ -264,7 +266,7 @@ typedef struct _NanoRect
  * Depending on BPP argument, this class can work with 1,8,16-bit canvas areas.
  */
 template <uint8_t BPP>
-class NanoCanvasOps
+class NanoCanvasOps: public Print
 {
 public:
     /** number of bits per single pixel in buffer */
@@ -350,6 +352,23 @@ public:
     void drawHLine(lcdint_t x1, lcdint_t y1, lcdint_t x2);
 
     /**
+     * Draws line
+     * @param x1 - position X
+     * @param y1 - position Y
+     * @param x2 - position X
+     * @param y2 - position Y
+     * @note color can be set via setColor()
+     */
+    void drawLine(lcdint_t x1, lcdint_t y1, lcdint_t x2, lcdint_t y2);
+
+    /**
+     * Draws line
+     * @param rect - structure, describing rectangle area
+     * @note color can be set via setColor()
+     */
+    void drawLine(const NanoRect &rect);
+
+    /**
      * Draws rectangle
      * @param x1 - position X
      * @param y1 - position Y
@@ -391,7 +410,7 @@ public:
      * @param w - width in pixels
      * @param h - height in pixels
      * @param bitmap - monochrome bitmap data, located in flash
-     * 
+     *
      * @note There are 2 modes: transparent and non-transparent mode, - and 2 colors available: black and white.
      *       In non-transparent mode, when black color is selected, the monochrome image just inverted.
      *       In transparent mode, those pixels of source monochrome image, which are black, do not overwrite pixels
@@ -419,7 +438,7 @@ public:
      * Writes single character to canvas
      * @param c - character code to print
      */
-    void write(uint8_t c);
+    size_t write(uint8_t c) override;
 
     /**
      * Draws single character to canvas

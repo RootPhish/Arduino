@@ -34,9 +34,12 @@
 #include "arkanoid.h"
 #include "levels.h"
 
+#define PIX_BITS  2
+
 NanoEngine8 engine;
 
 static uint8_t g_level = 0;
+static uint8_t g_score = 0;
 static const NanoRect gameArea = { {16, 0}, {79, 63} };
 static const NanoRect blockArea = { {gameArea.p1.x, 8},
                                     {gameArea.p1.x + BLOCKS_PER_ROW*8 - 1, 8 + BLOCK_NUM_ROWS*4 - 1} };
@@ -57,8 +60,8 @@ union
     {
         NanoRect  platform;  // platform position on the screen
         NanoPoint ball;      // ball position on the screen
-        int16_t   ballX;     // ball position in *2 coordinates
-        int16_t   ballY;     // ball position in *2 coordinates
+        int16_t   ballX;     // ball position in ^PIX_BITS coordinates
+        int16_t   ballY;     // ball position in ^PIX_BITS coordinates
         NanoPoint ballSpeed; // ball speed in *2 coordinates
         uint8_t   blocks[BLOCK_NUM_ROWS][MAX_BLOCKS_PER_ROW];
         uint8_t   blocksLeft;
@@ -66,7 +69,7 @@ union
     } battleField;
 } gameState;
 
-void startBattleField(void);
+void startBattleField(bool reload);
 
 bool drawIntro(void)
 {
@@ -88,7 +91,7 @@ void introLoop(void)
         gameState.intro.pauseFrames++;
         if (gameState.intro.pauseFrames > engine.getFrameRate() * 3 )
         {
-            startBattleField();
+            startBattleField( true );
         }
     }
 }
@@ -97,6 +100,7 @@ void startIntro(void)
 {
     engine.refresh();
     g_level = 0;
+    g_score = 0;
     gameState.intro.intro_y = -24;
     gameState.intro.pauseFrames = 0;
     engine.drawCallback( drawIntro );
@@ -144,12 +148,12 @@ bool drawBattleField(void)
     }
     else
     {
-        char str[4] = {0};
+        char str[8] = {0};
         engine.canvas.clear();
         engine.canvas.setColor(RGB_COLOR8(255,255,255));
         engine.canvas.drawVLine(gameArea.p1.x-1,0,64);
         engine.canvas.drawVLine(gameArea.p2.x+1,0,64);
-        utoa(engine.getCpuLoad( ), str, 10);
+        utoa(g_score, str, 10);
         engine.canvas.setColor(RGB_COLOR8(192,192,192));
         engine.canvas.printFixed(gameArea.p2.x+3, 16, str );
     }
@@ -188,6 +192,8 @@ bool checkBlockHit(void)
     }
     gameState.battleField.blocks[row][column] = 0;
     gameState.battleField.blocksLeft--;
+    g_score++;
+    engine.refresh( gameArea.p2.x + 1, 0, 95, 63 );
     if (((p.y & 3) == 2) || (p.y & 3) == 1)
     {
         gameState.battleField.ballSpeed.x = -gameState.battleField.ballSpeed.x;
@@ -208,17 +214,17 @@ bool checkPlatformHit()
     {
         if (gameState.battleField.ball.x < gameState.battleField.platform.p1.x + 3)
         {
-            gameState.battleField.ballSpeed.x = -2;
+            gameState.battleField.ballSpeed.x = -3;
             gameState.battleField.ballSpeed.y = -gameState.battleField.ballSpeed.y;
         }
         else if (gameState.battleField.ball.x > gameState.battleField.platform.p2.x - 3)
         {
-            gameState.battleField.ballSpeed.x = +2;
+            gameState.battleField.ballSpeed.x = +3;
             gameState.battleField.ballSpeed.y = -gameState.battleField.ballSpeed.y;
         }
         else
         {
-            gameState.battleField.ballSpeed.x = gameState.battleField.ballSpeed.x > 0 ? 1: -1;
+            gameState.battleField.ballSpeed.x = gameState.battleField.ballSpeed.x > 0 ? 2: -2;
             gameState.battleField.ballSpeed.y = -gameState.battleField.ballSpeed.y;
         }
         return true;
@@ -240,7 +246,7 @@ bool checkGameAreaHit(void)
         gameState.battleField.ballSpeed.y = -gameState.battleField.ballSpeed.y;
         if (gameState.battleField.ball.y > gameArea.p2.y)
         {
-             startBattleField();
+             startBattleField( false );
         }
     }
     return hit;
@@ -255,7 +261,8 @@ void moveBall(void)
         gameState.battleField.ballX += gameState.battleField.ballSpeed.x;
         gameState.battleField.ballY += gameState.battleField.ballSpeed.y;
         moveBall = false;
-        gameState.battleField.ball.setPoint(gameState.battleField.ballX>>1, gameState.battleField.ballY>>1);
+        gameState.battleField.ball.setPoint(gameState.battleField.ballX>>PIX_BITS,
+                                            gameState.battleField.ballY>>PIX_BITS);
         if (checkGameAreaHit())
         {
             moveBall = true;
@@ -279,14 +286,10 @@ void battleFieldLoop(void)
     moveBall();
     /* Refresh debug information if we need it */
     gameState.battleField.frames++;
-    if ( (gameState.battleField.frames & 0x3F) == 0 )
-    {
-        engine.refresh( gameArea.p2.x + 1, 0, 95, 63 );
-    }
     if (gameState.battleField.blocksLeft == 0)
     {
         g_level++;
-        startBattleField();
+        startBattleField( true );
     }
 }
 
@@ -297,6 +300,7 @@ void loadLevel(void)
     {
        g_level = MAX_LEVELS;
     }
+    gameState.battleField.blocksLeft = 0;
     for (uint8_t i =0; i<BLOCKS_PER_ROW; i++)
     {
         for (uint8_t j=0; j<BLOCK_NUM_ROWS; j++)
@@ -312,17 +316,20 @@ void loadLevel(void)
     gameState.battleField.frames = 0;
 }
 
-void startBattleField(void)
+void startBattleField(bool reload)
 {
     engine.refresh();
     gameState.battleField.platform.setRect( 20, 56, 31, 58 );
     gameState.battleField.ball.setPoint( 25, 55);
-    gameState.battleField.ballX = gameState.battleField.ball.x << 1;
-    gameState.battleField.ballY = gameState.battleField.ball.y << 1;
-    gameState.battleField.ballSpeed.setPoint( 2, -2);
+    gameState.battleField.ballX = gameState.battleField.ball.x << PIX_BITS;
+    gameState.battleField.ballY = gameState.battleField.ball.y << PIX_BITS;
+    gameState.battleField.ballSpeed.setPoint( 3, -(1<<PIX_BITS) );
     engine.drawCallback( drawBattleField );
     engine.loopCallback( battleFieldLoop );
-    loadLevel();
+    if ( reload )
+    {
+        loadLevel();
+    }
 
     /* Show level info in popup message */
     char levelInfo[8] = "LEVEL X";

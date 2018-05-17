@@ -26,7 +26,7 @@
 #include "lcd_common.h"
 #include "intf/ssd1306_interface.h"
 #include "spi/ssd1306_spi.h"
-#include "hal/io.h"
+#include "ssd1306_hal/io.h"
 #include "nano_gfx_types.h"
 
 #define CMD_ARG     0xFF
@@ -156,6 +156,10 @@ static void il9163_nextPage(void)
     ssd1306_lcd.set_block(s_column,s_page+1,0);
 }
 
+static void il9163_nextPage2(void)
+{
+}
+
 void    il9163_setMode(lcd_mode_t mode)
 {
     ssd1306_intf.start();
@@ -167,10 +171,12 @@ void    il9163_setMode(lcd_mode_t mode)
     if (mode)
     {
         ssd1306_lcd.set_block = il9163_setBlock;
+        ssd1306_lcd.next_page = il9163_nextPage;
     }
     else
     {
         ssd1306_lcd.set_block = il9163_setBlock2;
+        ssd1306_lcd.next_page = il9163_nextPage2;
     }
     s_rotation = mode ? 0x00 : 0x04;
 }

@@ -33,7 +33,6 @@
  */
 
 #include "ssd1306.h"
-#include "font6x8.h"
 
 void setup()
 {
