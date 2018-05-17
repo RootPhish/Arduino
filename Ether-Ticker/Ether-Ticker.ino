@@ -4,10 +4,8 @@
 #include <WebSocketsClient.h>
 #include <ArduinoJson.h>
 
-const char* host = "api.gdax.com";
+const char* host = "ws-feed.gdax.com";
 const int httpsPort = 443;
-const char* url = "/products/ETH-USD/ticker";
-const char* fingerprint = "69 39 26 2d de 76 cd 44 01 77 43 9b 0f 59 63 49 a7 cb b6 02";
 
 U8G2_SSD1306_128X32_UNIVISION_1_HW_I2C u8g2(U8G2_R0);
 WebSocketsClient webSocket;
@@ -30,7 +28,6 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
     case WStype_TEXT:
       Serial.printf("[WSc] get text: %s\n", payload);
       parseData((char *)payload);
-      printData();
       // send message to server
       // webSocket.sendTXT("message here");
       break;
@@ -49,17 +46,9 @@ void parseData(char* json) {
 
   JsonObject& root = jsonBuffer.parseObject(json);
 
-//  const char* type = root["type"]; // "ticker"
-//  long trade_id = root["trade_id"]; // 20153558
-//  long sequence = root["sequence"]; // 3262786978
-//  const char* time = root["time"]; // "2017-09-02T17:05:49.250000Z"
-//  const char* product_id = root["product_id"]; // "BTC-USD"
   const float price = root["price"]; // "4388.01000000"
   const float open_24h = root["open_24h"];
-//  const char* side = root["side"]; // "buy"
-//  const char* last_size = root["last_size"]; // "0.03000000"
-//  const char* best_bid = root["best_bid"]; // "4388"
-//  const char* best_ask = root["best_ask"]; // "4388.01"
+
   if (price) {
     currentValue = price;
     currentPL = (price - open_24h) / open_24h * 100;
@@ -80,7 +69,8 @@ void setup() {
   // Connect WiFi
   connectWiFi();
 
-  webSocket.beginSSL("ws-feed.gdax.com", 443);
+  // Connect to WebSocket
+  webSocket.beginSSL(host, httpsPort);
   webSocket.onEvent(webSocketEvent);
 }
 
@@ -111,29 +101,38 @@ void drawStr2Lines(const char *s1, const char *s2) {
   } while ( u8g2.nextPage() );
 }
 
+void drawStr1Line(const char *s) {
+  int width;
+  u8g2.firstPage();
+  do {
+    u8g2.setFont(u8g2_font_inr21_mf);
+    width = u8g2.getStrWidth(s);
+    u8g2.drawStr((128 - width) / 2, 31, s);
+  } while ( u8g2.nextPage() );  
+}
+
 void printData() {
   char buffer1[16];
   char buffer2[16];
   int ret;
   
   ret = snprintf(buffer1, sizeof buffer1, "$%.2f", currentValue);
-  ret = snprintf(buffer2, sizeof buffer2, "%.2f%%", currentPL);
-
-  drawStr2Lines(buffer1, buffer2);
-  
-/*  
-  int width;
-  u8g2.firstPage();    
-  do {
-    u8g2.setFont(u8g2_font_inr24_mn);
-    width = u8g2.getStrWidth(currentValue.c_str());
-    u8g2.drawStr((128 - width) / 2, 31, currentValue.c_str());
-  } while ( u8g2.nextPage() );  
-*/
+  if (currentPL > 0) {
+    ret = snprintf(buffer2, sizeof buffer2, "+%.2f%%", currentPL);
+  } else {
+    ret = snprintf(buffer2, sizeof buffer2, "%.2f%%", currentPL);
+  }
+  unsigned long currentMillis = millis();
+  if (currentMillis % 10000 < 5000) {
+    drawStr1Line(buffer1);
+  } else {
+    drawStr1Line(buffer2);
+  }
 }
 
 void loop() {
   webSocket.loop();
+  printData();
 }
 
 
