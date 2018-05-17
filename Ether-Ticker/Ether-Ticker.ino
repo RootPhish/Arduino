@@ -12,6 +12,12 @@ WebSocketsClient webSocket;
 
 float currentValue = 0;
 float currentPL = 0;
+unsigned long startMillis;
+unsigned long currentMillis;
+const unsigned long period = 5000;
+
+int activePage = 1;
+int numPages = 2;
 
 void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
   switch(type) {
@@ -72,6 +78,8 @@ void setup() {
   // Connect to WebSocket
   webSocket.beginSSL(host, httpsPort);
   webSocket.onEvent(webSocketEvent);
+
+  startMillis = millis();
 }
 
 void connectWiFi() {
@@ -101,32 +109,45 @@ void drawStr2Lines(const char *s1, const char *s2) {
   } while ( u8g2.nextPage() );
 }
 
-void drawStr1Line(const char *s) {
+void drawStr1Line(const char *s, int ypos = 31) {
   int width;
   u8g2.firstPage();
   do {
     u8g2.setFont(u8g2_font_inr21_mf);
     width = u8g2.getStrWidth(s);
-    u8g2.drawStr((128 - width) / 2, 31, s);
+    u8g2.drawStr((128 - width) / 2, ypos, s);
   } while ( u8g2.nextPage() );  
 }
 
-void printData() {
-  char buffer1[16];
-  char buffer2[16];
-  int ret;
-  
-  ret = snprintf(buffer1, sizeof buffer1, "$%.2f", currentValue);
-  if (currentPL > 0) {
-    ret = snprintf(buffer2, sizeof buffer2, "+%.2f%%", currentPL);
-  } else {
-    ret = snprintf(buffer2, sizeof buffer2, "%.2f%%", currentPL);
+void drawAndScroll(const char *s) {
+  int ypos = 31;
+  while (ypos > -5) {
+    drawStr1Line(s, ypos);
+    ypos--;
+    delay(10);
   }
-  unsigned long currentMillis = millis();
-  if (currentMillis % 10000 < 5000) {
-    drawStr1Line(buffer1);
+}
+void printData() {
+  char buffer[16];
+  int ret;
+
+  switch (activePage) {
+    case 1: ret = snprintf(buffer, sizeof buffer, "$%.2f", currentValue);
+            break;
+    case 2: ret = snprintf(buffer, sizeof buffer, "%+.2f%%", currentPL);
+            break;
+  }
+
+  currentMillis = millis();
+  if (currentMillis - startMillis >= period) {
+    drawAndScroll(buffer);
+    activePage++;
+    if (activePage > numPages) {
+      activePage = 1;
+    }
+    startMillis = currentMillis;
   } else {
-    drawStr1Line(buffer2);
+    drawStr1Line(buffer);
   }
 }
 
