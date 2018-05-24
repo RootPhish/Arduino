@@ -243,8 +243,6 @@ void NanoCanvasOps<8>::drawBitmap1(lcdint_t xpos, lcdint_t ypos, lcduint_t w, lc
     }
     uint8_t offs2 = 8 - offs;
     lcdint_t y = y1;
-//    printf("[%d;%d] + [%d;%d], P1[%d;%d], P2[%d;%d]\n", xpos, ypos, offset.x, offset.y, x1,y1,x2,y2);
-//    printf("offset: 1=%d, 2=%d\n", offs, offs2);
     while ( y <= y2)
     {
         for ( lcdint_t x = x1; x <= x2; x++ )
@@ -812,6 +810,18 @@ void NanoCanvas1::blt(lcdint_t x, lcdint_t y)
 void NanoCanvas1::blt()
 {
     ssd1306_drawBufferFast(offset.x, offset.y, m_w, m_h, m_buf);
+}
+
+//                 NANO CANVAS 1_8
+
+void NanoCanvas1_8::blt(lcdint_t x, lcdint_t y)
+{
+    ssd1331_drawMonoBuffer8(x, y, m_w, m_h, m_buf);
+}
+
+void NanoCanvas1_8::blt()
+{
+    ssd1331_drawMonoBuffer8(offset.x, offset.y, m_w, m_h, m_buf);
 }
 
 /////////////////////////////////////////////////////////////////////////////////
