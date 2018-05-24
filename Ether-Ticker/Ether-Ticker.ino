@@ -12,14 +12,15 @@ const int displayHeight = 32;
 U8G2_SSD1306_128X32_UNIVISION_1_HW_I2C u8g2(U8G2_R0);
 WebSocketsClient webSocket;
 
-float currentValue = 0;
+float currentValueUSD = 0;
+float currentValueEUR = 0;
 float currentPL = 0;
 unsigned long startMillis;
 unsigned long currentMillis;
 const unsigned long period = 5000;
 
 int activePage = 0;
-int numPages = 2;
+int numPages = 3;
 
 void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
   switch(type) {
@@ -29,21 +30,16 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
     case WStype_CONNECTED:
       {
         Serial.printf("[WSc] Connected to url: %s\n",  payload);
-        // send message to server when Connected
-        webSocket.sendTXT("{\"type\":\"subscribe\",\"channels\":[{\"name\":\"ticker\",\"product_ids\":[\"ETH-USD\"]}]}");
+        webSocket.sendTXT("{\"type\":\"subscribe\",\"channels\":[{\"name\":\"ticker\",\"product_ids\":[\"ETH-USD\",\"ETH-EUR\"]}]}");
       }
       break;
     case WStype_TEXT:
       Serial.printf("[WSc] get text: %s\n", payload);
       parseData((char *)payload);
-      // send message to server
-      // webSocket.sendTXT("message here");
       break;
     case WStype_BIN:
       Serial.printf("[WSc] get binary length: %u\n", length);
       hexdump(payload, length);
-      // send data to server
-      // webSocket.sendBIN(payload, length);
       break;
     }
 }
@@ -55,11 +51,16 @@ void parseData(char* json) {
   JsonObject& root = jsonBuffer.parseObject(json);
 
   const float price = root["price"]; // "4388.01000000"
+  const char* product = root["product_id"];
   const float open_24h = root["open_24h"];
 
   if (price) {
-    currentValue = price;
-    currentPL = (price - open_24h) / open_24h * 100;
+    if (strcmp(product, "ETH-EUR") == 0) {
+      currentValueEUR = price;
+    } else {
+      currentValueUSD = price;
+    }
+    currentPL = (currentValueUSD - open_24h) / open_24h * 100;
   }
 }
 
@@ -145,11 +146,15 @@ char *getContentForPage(int page) {
   size_t needed;
   
   switch (page) {
-    case 0: needed = snprintf(NULL, 0, "$%.2f", currentValue) + 1;
+    case 0: needed = snprintf(NULL, 0, "$%.2f", currentValueUSD) + 1;
             buffer = (char *)malloc(needed);
-            ret = snprintf(buffer, needed, "$%.2f", currentValue);
+            ret = snprintf(buffer, needed, "$%.2f", currentValueUSD);
             break;
-    case 1: needed = snprintf(NULL, 0, "%+.2f%%", currentPL) + 1;
+    case 1: needed = snprintf(NULL, 0, "E%.2f", currentValueEUR) + 1;
+            buffer = (char *)malloc(needed);
+            ret = snprintf(buffer, needed, "E%.2f", currentValueEUR);
+            break;
+    case 2: needed = snprintf(NULL, 0, "%+.2f%%", currentPL) + 1;
             buffer = (char *)malloc(needed);
             ret = snprintf(buffer, needed, "%+.2f%%", currentPL);
             break;
@@ -159,13 +164,9 @@ char *getContentForPage(int page) {
 
 void printData() {
   char *buffer = getContentForPage(activePage);
-  Serial.println("current:");
-  Serial.println(buffer);
   currentMillis = millis();
   if (currentMillis - startMillis >= period) {
     char *nextBuffer = getContentForPage((activePage + 1) % numPages);
-    Serial.println("next:");
-    Serial.println(nextBuffer);
     drawAndScroll(buffer, nextBuffer);
     activePage++;
     if (activePage >= numPages) {
