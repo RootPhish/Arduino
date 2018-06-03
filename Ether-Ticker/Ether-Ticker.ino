@@ -3,24 +3,29 @@
 #include <WiFiManager.h>         
 #include <WebSocketsClient.h>
 #include <ArduinoJson.h>
+#include "font.h"
 
 const char* host = "ws-feed.gdax.com";
 const int httpsPort = 443;
 const int displayWidth = 128;
 const int displayHeight = 32;
 
-U8G2_SSD1306_128X32_UNIVISION_1_HW_I2C u8g2(U8G2_R0);
+//U8G2_SSD1306_128X32_UNIVISION_1_HW_I2C u8g2(U8G2_R0);
+U8G2_SSD1306_128X64_NONAME_2_HW_I2C u8g2(U8G2_R0);
 WebSocketsClient webSocket;
 
 float currentValueUSD = 0;
 float currentValueEUR = 0;
-float currentPL = 0;
+float currentPLUSD = 0;
+float currentPLEUR = 0;
 unsigned long startMillis;
 unsigned long currentMillis;
 const unsigned long period = 5000;
 
 int activePage = 0;
-int numPages = 3;
+int numPages = 2;
+bool scrolling = false;
+int scrollOffset = 0;
 
 void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
   switch(type) {
@@ -57,10 +62,11 @@ void parseData(char* json) {
   if (price) {
     if (strcmp(product, "ETH-EUR") == 0) {
       currentValueEUR = price;
+      currentPLEUR = (currentValueEUR - open_24h) / open_24h * 100;
     } else {
       currentValueUSD = price;
+      currentPLUSD = (currentValueUSD - open_24h) / open_24h * 100;
     }
-    currentPL = (currentValueUSD - open_24h) / open_24h * 100;
   }
 }
 
@@ -73,6 +79,7 @@ void setup() {
   
   // Initialize OLED display
   u8g2.begin();
+  u8g2.enableUTF8Print();
   delay(1000);
   
   // Connect WiFi
@@ -83,6 +90,19 @@ void setup() {
   webSocket.onEvent(webSocketEvent);
 
   startMillis = millis();
+}
+
+void drawStr2Lines(const char *s1, const char *s2, int offset = 0) {
+  int width;
+  u8g2.setFont(u8g2_font_inconsolata_tx);
+  //u8g2.setFont(u8g2_font_pxplusibmvga9_m_all);
+  width = u8g2.getUTF8Width(s1);
+  if (s1[0]=='€') { width -= 8; }
+  u8g2.setCursor((displayWidth - width) / 2, 31 + offset);
+  u8g2.print(s1);
+  width = u8g2.getUTF8Width(s2);
+  u8g2.setCursor((displayWidth - width) / 2, 62 + offset);
+  u8g2.print(s2);
 }
 
 void connectWiFi() {
@@ -100,85 +120,44 @@ void configModeCallback (WiFiManager *myWiFiManager) {
   Serial.println(myWiFiManager->getConfigPortalSSID());
 }
 
-void drawStr2Lines(const char *s1, const char *s2) {
-  int width;
-  u8g2.firstPage();
-  do {
-    u8g2.setFont(u8g2_font_crox3h_tf);
-    width = u8g2.getStrWidth(s1);
-    u8g2.drawStr((displayWidth - width) / 2, 12, s1);
-    width = u8g2.getStrWidth(s2);
-    u8g2.drawStr((displayWidth - width) / 2, 31, s2);
-  } while ( u8g2.nextPage() );
-}
-
-void drawStr1Line(const char *s, int ypos = 31) {
-  int width;
-  u8g2.firstPage();
-  do {
-    u8g2.setFont(u8g2_font_inr21_mf);
-    width = u8g2.getStrWidth(s);
-    u8g2.drawStr((displayWidth - width) / 2, ypos, s);
-  } while ( u8g2.nextPage() );  
-}
-
-void drawAndScroll(const char *s, const char *next) {
-  int gap = 5;
-  int ypos = displayHeight - 1;
-  int width;
-  while (ypos > -gap) {
-    u8g2.firstPage();
-    do {
-      u8g2.setFont(u8g2_font_inr21_mf);
-      width = u8g2.getStrWidth(s);
-      u8g2.drawStr((displayWidth - width) / 2, ypos, s);
-      width = u8g2.getStrWidth(next);
-      u8g2.drawStr((displayWidth - width) / 2, ypos + displayHeight - 1 + gap, next);
-    } while ( u8g2.nextPage() ); 
-    ypos--;
-    delay(10);
-  }
-}
-
-char *getContentForPage(int page) {
-  char *buffer;
-  int ret;
-  size_t needed;
-  
+void drawPage(int page, int offset = 0) {
+  char buffer1[50];
+  char buffer2[50];
   switch (page) {
-    case 0: needed = snprintf(NULL, 0, "$%.2f", currentValueUSD) + 1;
-            buffer = (char *)malloc(needed);
-            ret = snprintf(buffer, needed, "$%.2f", currentValueUSD);
+    case 0: snprintf(buffer1, sizeof(buffer1), "$%.2f", currentValueUSD);
+            snprintf(buffer2, sizeof(buffer2), "%+.2f%%", currentPLUSD);
+            drawStr2Lines(buffer1, buffer2, offset);
             break;
-    case 1: needed = snprintf(NULL, 0, "E%.2f", currentValueEUR) + 1;
-            buffer = (char *)malloc(needed);
-            ret = snprintf(buffer, needed, "E%.2f", currentValueEUR);
-            break;
-    case 2: needed = snprintf(NULL, 0, "%+.2f%%", currentPL) + 1;
-            buffer = (char *)malloc(needed);
-            ret = snprintf(buffer, needed, "%+.2f%%", currentPL);
+    case 1: snprintf(buffer1, sizeof(buffer1), "€%.2f", currentValueEUR);
+            snprintf(buffer2, sizeof(buffer2), "%+.2f%%", currentPLEUR);
+            drawStr2Lines(buffer1, buffer2, offset);
             break;
   }
-  return buffer;
 }
 
 void printData() {
-  char *buffer = getContentForPage(activePage);
   currentMillis = millis();
   if (currentMillis - startMillis >= period) {
-    char *nextBuffer = getContentForPage((activePage + 1) % numPages);
-    drawAndScroll(buffer, nextBuffer);
-    activePage++;
-    if (activePage >= numPages) {
-      activePage = 0;
-    }
+    scrolling = true;
     startMillis = currentMillis;
-    free(nextBuffer);
   } else {
-    drawStr1Line(buffer);
+    u8g2.firstPage();
+    do {
+      if (!scrolling) {
+        drawPage(activePage);
+      } else {
+        scrollOffset--;
+        drawPage(activePage, scrollOffset);
+        drawPage((activePage + 1) % numPages, scrollOffset + 64);
+        if (scrollOffset <= -64) {
+          scrollOffset = 0;
+          scrolling = false;
+          activePage = (activePage + 1) % numPages;
+        }
+//delay(20);
+      }
+    } while ( u8g2.nextPage() );  
   }
-
-  free(buffer);
 }
 
 void loop() {
