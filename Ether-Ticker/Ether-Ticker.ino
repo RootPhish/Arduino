@@ -10,7 +10,6 @@ const int httpsPort = 443;
 const int displayWidth = 128;
 const int displayHeight = 32;
 
-//U8G2_SSD1306_128X32_UNIVISION_1_HW_I2C u8g2(U8G2_R0);
 U8G2_SSD1306_128X64_NONAME_2_HW_I2C u8g2(U8G2_R0);
 WebSocketsClient webSocket;
 
@@ -27,10 +26,20 @@ int numPages = 2;
 bool scrolling = false;
 int scrollOffset = 0;
 
+extern "C" {
+#include "user_interface.h"
+}
+uint32_t freemem = system_get_free_heap_size();
+
+extern "C" {
+#include <cont.h>
+  extern cont_t g_cont;
+}
+
 void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
   switch(type) {
     case WStype_DISCONNECTED:
-      Serial.printf("[WSc] Disconnected!\n");
+      //Serial.printf("[WSc] Disconnected!\n");
       break;
     case WStype_CONNECTED:
       {
@@ -39,7 +48,7 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
       }
       break;
     case WStype_TEXT:
-      Serial.printf("[WSc] get text: %s\n", payload);
+      //Serial.printf("[WSc] get text: %s\n", payload);
       parseData((char *)payload);
       break;
     case WStype_BIN:
@@ -55,7 +64,7 @@ void parseData(char* json) {
 
   JsonObject& root = jsonBuffer.parseObject(json);
 
-  const float price = root["price"]; // "4388.01000000"
+  const float price = root["price"];
   const char* product = root["product_id"];
   const float open_24h = root["open_24h"];
 
@@ -95,9 +104,7 @@ void setup() {
 void drawStr2Lines(const char *s1, const char *s2, int offset = 0) {
   int width;
   u8g2.setFont(u8g2_font_inconsolata_tx);
-  //u8g2.setFont(u8g2_font_pxplusibmvga9_m_all);
   width = u8g2.getUTF8Width(s1);
-  if (s1[0]=='€') { width -= 8; }
   u8g2.setCursor((displayWidth - width) / 2, 31 + offset);
   u8g2.print(s1);
   width = u8g2.getUTF8Width(s2);
@@ -135,6 +142,17 @@ void drawPage(int page, int offset = 0) {
   }
 }
 
+long RAMfree(void)
+{
+  long s, h;
+  Serial.printf("\n Heap free = \'%d\', Stack free = \'%d\', Stack guard bytes were ", (h=system_get_free_heap_size()), (s=cont_get_free_stack(&g_cont)));
+  if (!cont_check(&g_cont)) {
+    Serial.printf("NOT ");
+  }
+  Serial.println("overwritten");
+  return (s+h);
+}
+
 void printData() {
   currentMillis = millis();
   if (currentMillis - startMillis >= period) {
@@ -154,7 +172,6 @@ void printData() {
           scrolling = false;
           activePage = (activePage + 1) % numPages;
         }
-//delay(20);
       }
     } while ( u8g2.nextPage() );  
   }
